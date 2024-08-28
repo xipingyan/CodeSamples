@@ -1,6 +1,11 @@
 #include <cuda_runtime_api.h>
 #include <iostream>
 
+// __device__: the fun can be called by GPU, and execute on GPU.
+// __global__: the fun can be called by CPU, and execute on GPU.
+// __host__: the fun can be called by CPU, and execute on CPU.
+
+
 // Define a function that will only be compiled for and called from host
 __host__ void HostOnly()
 {
