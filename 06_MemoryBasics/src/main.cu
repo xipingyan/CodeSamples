@@ -36,7 +36,7 @@ __device__ void WriteAndPrintSharedMemory(int* sFoo)
 __global__ void WriteAndPrintSharedMemoryFixed()
 {
     // Fixed allocation of two integers in shared memory
-    __shared__ int sFoo[2];
+    __shared__ int sFoo[2];  // Scope in Block
     // Use it for efficient exchange of information
     WriteAndPrintSharedMemory(sFoo);
 }
@@ -47,6 +47,53 @@ __global__ void WriteAndPrintSharedMemoryDynamic()
     extern __shared__ int sFoo[];
     // Use it for efficient exchange of information
     WriteAndPrintSharedMemory(sFoo);
+}
+
+__device__ uint get_smid(void) {
+     uint ret;
+     asm("mov.u32 %0, %smid;" : "=r"(ret) );
+     return ret;
+}
+__forceinline__ __device__ unsigned warpid()
+{
+    // this is not equal to threadIdx.x / 32
+    unsigned ret; 
+    asm volatile ("mov.u32 %0, %warpid;" : "=r"(ret));
+    return ret;
+}
+
+__device__ void WriteAndPrintSharedMemoryXp(int *sFooXp)
+{
+    // Initilize with 0: 
+    // Previously executed function maybe have impact on current shared memory.
+    {
+        sFooXp[0] = sFooXp[1] = 0;
+        // printf("BlockID: %d, ThreadID: %d, sFooXp[0]: %d, sFooXp[1]: %d\n", blockIdx.x, threadIdx.x, sFooXp[0], sFooXp[1]);
+        __syncwarp();
+    }
+
+    // Write a computed result to shared memory for other threads to see
+    bool assign_value = false;
+    if (blockIdx.x > 0 && threadIdx.x > 0)
+    {
+        sFooXp[0] = 42 * (0 + 1);
+        sFooXp[1] = 42 * (1 + 1);
+        assign_value = true;
+    }
+    // We make sure that no thread prints while the other still writes (parallelism!)
+    __syncwarp();
+    // Print own computed result and result by neighbor
+    printf("BlockID: %d, ThreadID: %d, sFooXp[0]: %d, sFooXp[1]: %d, assign_value=%d, warpid=%u, smid=%u\n",
+           blockIdx.x, threadIdx.x, sFooXp[0], sFooXp[1], assign_value, warpid(), get_smid());
+}
+
+__global__ void WriteAndPrintSharedMemoryDynamicXp()
+{
+    // Use dynamically allocated shared memory
+    extern  __shared__ int sFooXp[]; // Scope only in Block, (It will not be initialized with 0)
+
+    // Use it for efficient exchange of information
+    WriteAndPrintSharedMemoryXp(sFooXp);
 }
 
 int main()
@@ -83,7 +130,7 @@ int main()
      updated with cudaMemcpy. Must be free'd afterward.
     */
     int* dBarPtr;
-    cudaMalloc((void**)&dBarPtr, sizeof(int));
+    cudaMalloc((void**)&dBarPtr, sizeof(int)); // Allocate memory on the device. (should be global memory.)
     cudaMemcpy(dBarPtr, &bar, sizeof(int), cudaMemcpyHostToDevice);
     ReadGlobalMemory<<<1, 1>>>(dBarPtr);
     cudaDeviceSynchronize();
@@ -120,6 +167,19 @@ int main()
 
     std::cout << "\nUsing dynamic shared memory to share computed results" << std::endl;
     WriteAndPrintSharedMemoryDynamic<<<1, 2, 2 * sizeof(int)>>>();
+    cudaDeviceSynchronize();
+
+    std::cout << "\nUsing dynamic shared memory to share computed results, xp updated." << std::endl;
+    /*
+     __shared var's scope is only in block.
+     Expected output:
+        Using dynamic shared memory to share computed results, xp updated.
+        BlockID: 1, ThreadID: 0, sFooXp[0]: 42, sFooXp[1]: 84, assign_value=0
+        BlockID: 1, ThreadID: 1, sFooXp[0]: 42, sFooXp[1]: 84, assign_value=1
+        BlockID: 0, ThreadID: 0, sFooXp[0]: 0, sFooXp[1]: 0, assign_value=0
+        BlockID: 0, ThreadID: 1, sFooXp[0]: 0, sFooXp[1]: 0, assign_value=0
+     */
+    WriteAndPrintSharedMemoryDynamicXp<<<2, 2, 2 * sizeof(int)>>>();
     cudaDeviceSynchronize();
 
     return 0;
