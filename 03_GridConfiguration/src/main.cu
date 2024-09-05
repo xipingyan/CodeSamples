@@ -6,7 +6,8 @@ __global__ void PrintIDs()
     // Use built-in variables blockIdx and threadIdx
     const auto tID = threadIdx;
     const auto bID = blockIdx;
-    printf("Block Id: %d,%d - Thread Id: %d,%d\n", bID.x, bID.y, tID.x, tID.y);
+    const auto thrdIndex = tID.x + tID.y * 4 + tID.z * 4 * 4;
+    printf("Block Id: %d,%d - Thread Id: %d,%d,%d, my thread id: %d\n", bID.x, bID.y, tID.x, tID.y, tID.z, thrdIndex);
 }
 
 int main()
@@ -20,7 +21,7 @@ int main()
     std::cout << "Small grid: \n";
     // Configure the grid and block dimensions via built-in struct dim3 (X,Y,Z)
     const dim3 gridSize_small{ 1, 1, 1 };
-    const dim3 blockSize_small{ 4, 4, 1 };
+    const dim3 blockSize_small{ 4, 4, 1 };  // Called a 3Dim block of theads.
 
     // Launch kernel with custom grid
     PrintIDs<<<gridSize_small, blockSize_small>>>();
