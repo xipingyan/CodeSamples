@@ -1,6 +1,7 @@
 #include <cuda_runtime_api.h>
 #include <iostream>
 
+#include "../../shared/include/utility.h"
 
 // Declaration of a device variable in constant memory
 __constant__ int cFoo;
@@ -49,19 +50,6 @@ __global__ void WriteAndPrintSharedMemoryDynamic()
     WriteAndPrintSharedMemory(sFoo);
 }
 
-__device__ uint get_smid(void) {
-     uint ret;
-     asm("mov.u32 %0, %smid;" : "=r"(ret) );
-     return ret;
-}
-__forceinline__ __device__ unsigned warpid()
-{
-    // this is not equal to threadIdx.x / 32
-    unsigned ret; 
-    asm volatile ("mov.u32 %0, %warpid;" : "=r"(ret));
-    return ret;
-}
-
 __device__ void WriteAndPrintSharedMemoryXp(int *sFooXp)
 {
     // Initilize with 0: 
@@ -84,7 +72,7 @@ __device__ void WriteAndPrintSharedMemoryXp(int *sFooXp)
     __syncwarp();
     // Print own computed result and result by neighbor
     printf("BlockID: %d, ThreadID: %d, sFooXp[0]: %d, sFooXp[1]: %d, assign_value=%d, warpid=%u, smid=%u\n",
-           blockIdx.x, threadIdx.x, sFooXp[0], sFooXp[1], assign_value, warpid(), get_smid());
+           blockIdx.x, threadIdx.x, sFooXp[0], sFooXp[1], assign_value, utils::warpid(), utils::get_smid());
 }
 
 __global__ void WriteAndPrintSharedMemoryDynamicXp()

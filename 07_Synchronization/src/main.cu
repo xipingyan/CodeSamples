@@ -17,18 +17,19 @@ __global__ void Square(int* out)
 __global__ void ApproximatePi(bool synchronized)
 {
     // Create block-shared variable for approximated Pi
-    __shared__ float sPi;
+    __shared__ float sPi;  // shared in a SM (Software block)
     // Thread 0 computes Pi and stores it to shared memory
-    if (threadIdx.x == 0)
+    if (threadIdx.x == 0 && blockIdx.x == 0)
         sPi = samplesutil::GregoryLeibniz(100'000);
 
     // Boolean decides whether threads synchronize or not
     if (synchronized)
-        __syncthreads();
+        __syncthreads();  // sync all threads in current block(SM).
 
     // Every thread should now perform some task with Pi
-    if (threadIdx.x%32 == 0)
-        printf("Thread %d thinks Pi = %f\n", threadIdx.x, sPi);
+    // if (threadIdx.x%32 == 0)
+    //     printf("Thread %d thinks Pi = %f, smid=%u, warpid=%u\n", threadIdx.x, sPi, utils::get_smid(), utils::warpid());
+    printf("Block %d Thread %d thinks Pi = %f, smid=%u, warpid=%u\n", blockIdx.x, threadIdx.x, sPi, utils::get_smid(), utils::warpid());
 }
 
 int main()
@@ -71,7 +72,7 @@ int main()
     std::cout << "Demonstrating implicit synchronization:" << std::endl;
     // Allocate some device memory for kernels to work with
     int* dFooPtr;
-    cudaMalloc(&dFooPtr, sizeof(int));
+    cudaMalloc(&dFooPtr, sizeof(int)); //	Allocate memory on the device.
     // First kernel sets device memory to 42 (slowly)
     WriteSlow<<<1,1>>>(dFooPtr, 42);
     // Second kernel squares value of variable
@@ -97,13 +98,13 @@ int main()
     */
     std::cout << "\nNo __syncthreads after computing a block-shared Pi:" << std::endl;
     // Run once without syncthreads
-    ApproximatePi<<<1, 128>>>(false);
+    ApproximatePi<<<2, 128>>>(false);
     // Wait for printf to finish
     cudaDeviceSynchronize();
 
     std::cout << "\n__syncthreads after computing a block-shared Pi:" << std::endl;
     // Run again with syncthreads
-    ApproximatePi<<<1, 128>>>(true);
+    ApproximatePi<<<2, 128>>>(true);
     // Wait for printf to finish
     cudaDeviceSynchronize();
 
