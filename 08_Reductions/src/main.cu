@@ -10,7 +10,7 @@
 #include "../../shared/include/utility.h"
 
 // Declare a GPU-visible floating point variable in global memory.
-__device__ float dResult;
+__device__ float dResult; // Global Memory
 
 /*
  The most basic reduction kernel uses atomic operations to accumulate
@@ -45,7 +45,7 @@ __global__ void reduceAtomicShared(const float* __restrict input, int N)
     const int id = threadIdx.x + blockIdx.x * blockDim.x;
 
     // Declare a shared float for each block
-    __shared__ float x;
+    __shared__ float x; // Scope: per block
 
     // Only one thread should initialize this shared value
     if (threadIdx.x == 0) 
@@ -55,7 +55,7 @@ __global__ void reduceAtomicShared(const float* __restrict input, int N)
     Before we continue, we must ensure that all threads
     can see this update (initialization) by thread 0
     */
-    __syncthreads();
+    __syncthreads(); // Sync all threads in a block.
 
     /*
     Every thread in the block adds its input to the
@@ -250,8 +250,21 @@ int main()
 
     std::cout << "==== CPU Reduction ====\n" << std::endl;
     // A reference value is computed by sequential reduction
-    std::cout << "Computed CPU value: " << std::accumulate(vals.cbegin(), vals.cend(), 0.0f) << std::endl;
+    auto myt1 = std::chrono::high_resolution_clock::now();
+    float sum = 0;
+    // I don't know this is faster than 'std::accumulate'
+    for (auto i = 0; i < N; i++)
+    {
+        sum += vals[i];
+    }
+    auto myt2 = std::chrono::high_resolution_clock::now();
+    std::cout << "My Computed CPU value: " << sum << ", tm = " << std::chrono::duration_cast<std::chrono::milliseconds>(myt2 - myt1).count() << " ms" << std::endl;
 
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto refer_val = std::accumulate(vals.begin(), vals.end(), 0.0f);
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::cout << "Computed CPU value: " << refer_val << ", tm = " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << " ms" << std::endl;
+    
     std::cout << "==== GPU Reductions ====\n" << std::endl;
     /*
      Set up a collection of reductions to evaluate for performance. 
@@ -260,9 +273,9 @@ int main()
     */
     const std::tuple<const char*, void(*)(const float*, int), unsigned int> reductionTechniques[]
     {
-        {"Atomic Global", reduceAtomicGlobal, N},
-        {"Atomic Shared", reduceAtomicShared, N},
-        {"Reduce Shared", reduceShared<BLOCK_SIZE>, N},
+        {"Atomic Global", reduceAtomicGlobal, N}, // Global calc
+        {"Atomic Shared", reduceAtomicShared, N}, // Split to each block, each block finish, and than sum all block.
+        {"Reduce Shared", reduceShared<BLOCK_SIZE>, N}, //
         {"Reduce Shuffle", reduceShuffle<BLOCK_SIZE>, N},
         {"Reduce Final", reduceFinal<BLOCK_SIZE>, N / 2 + 1}
     };
