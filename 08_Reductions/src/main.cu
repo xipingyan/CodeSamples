@@ -225,8 +225,11 @@ __global__ void reduceFinal(const float* __restrict input, int N)
         atomicAdd(&dResult, x);
 }
 
+#include "private.h"
 int main()
 {
+    return test_bcast_a_value_cross_a_warp();
+
     std::cout << "==== Sample 08 - Reductions ====\n" << std::endl;
     /*
      Expected output: Accumulated results from CPU and GPU that 
