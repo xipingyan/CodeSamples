@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cuda_runtime_api.h>
 #include <mma.h>
+#include <chrono>
 
 #ifndef SAMPLES_UTIL_INCLUDED
 #define SAMPLES_UTIL_INCLUDED
@@ -36,6 +37,11 @@ namespace utils
         unsigned ret;
         asm volatile("mov.u32 %0, %warpid;" : "=r"(ret));
         return ret;
+    }
+
+    int64_t elapse_ms(std::chrono::high_resolution_clock::time_point &t2, std::chrono::high_resolution_clock::time_point &t1)
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
     }
 }
 

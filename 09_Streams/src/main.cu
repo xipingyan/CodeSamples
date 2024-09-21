@@ -10,32 +10,41 @@
 // A simple kernel function to keep threads busy for a while
 __global__ void busy()
 {
+	int id = (blockIdx.x * blockDim.x + threadIdx.x);
+	clock_t start_time = clock(); 
 	samplesutil::WasteTime(1'000'000'000ULL);
-	printf("I'm awake! blockDim.x=%d, threadIdx.x=%d\n", blockDim.x, threadIdx.x);
+  	clock_t stop_time = clock();
+	printf("I'm awake! blockIdx.x=%d, threadIdx.x=%d, id=%d, clock=%llu ms\n", blockIdx.x, threadIdx.x, id, (stop_time-start_time));
 }
 
 constexpr unsigned int KERNEL_CALLS = 2;
 
+// 默认使用同一个默认的stream，所以2个busy将数序执行。
 void test_sequential_default_stream()
 {
 	std::cout << "Running sequential launches. both default stream." << std::endl;
 	// Launch the same kernel several times in a row
+	auto t1 = std::chrono::high_resolution_clock::now();
 	for (unsigned int i = 0; i < KERNEL_CALLS; i++)
-		busy<<<1, 1>>>();
+		busy<<<1, 2>>>();
 	// Synchronize before continuing to get clear separation in Nsight
 	cudaDeviceSynchronize();
+	auto t2 = std::chrono::high_resolution_clock::now();
+	std::cout << "== time=" << utils::elapse_ms(t2, t1) << " ms" << std::endl;
 }
 
+// 使用不同的stream，所以2个busy将并行执行。
 void test_different_stream()
 {
 	std::cout << "\nRunning launches in streams. different stream." << std::endl;
 	// Allocate one stream for each kernel to be launched
+	auto t1 = std::chrono::high_resolution_clock::now();
 	cudaStream_t streams[KERNEL_CALLS];
 	for (cudaStream_t &s : streams)
 	{
 		// Create stream and launch kernel into it
 		cudaStreamCreate(&s);
-		busy<<<1, 1, 0, s>>>();
+		busy<<<1, 2, 0, s>>>();
 	}
 	/*
 	Destroy all streams. It is fine to do that immediately. Will not
@@ -45,6 +54,9 @@ void test_different_stream()
 	for (cudaStream_t &s : streams)
 		cudaStreamDestroy(s);
 	cudaDeviceSynchronize();
+	auto t2 = std::chrono::high_resolution_clock::now();
+
+	std::cout << "== time=" << utils::elapse_ms(t2, t1) << " ms" << std::endl;
 }
 
 void test_threads_with_different_default_streams()
@@ -143,8 +155,8 @@ int main()
 
 	test_sequential_default_stream();
 	test_different_stream();
-	test_threads_with_different_default_streams();
-	test_A_B();
+	// test_threads_with_different_default_streams();
+	// test_A_B();
 
 	return 0;
 }
