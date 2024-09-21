@@ -4,7 +4,7 @@
 __global__ void HelloGPU()
 {
 	// Print a simple message from the GPU
-	printf("Hello from the GPU!\n");
+	printf("Hello from the GPU! blockDim.x=%d, threadIdx.x=%d\n", blockDim.x, threadIdx.x);
 }
 
 int main()
