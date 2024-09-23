@@ -131,8 +131,8 @@ void test_A_B()
 		cudaDeviceSynchronize();
 	};
 
-	testAB("regular", customRegular);
-	testAB("non-blocking", customNonblocking);
+	testAB("regular", customRegular);		   // Will be synchronize.
+	testAB("non-blocking", customNonblocking); // Will be asynchronize.
 
 	// Clean up generated streams
 	cudaStreamDestroy(customRegular);
@@ -155,8 +155,8 @@ int main()
 
 	test_sequential_default_stream();
 	test_different_stream();
-	// test_threads_with_different_default_streams();
-	// test_A_B();
+	test_threads_with_different_default_streams();
+	test_A_B();
 
 	return 0;
 }
