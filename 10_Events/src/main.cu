@@ -7,6 +7,7 @@
 // A kernel that wastes some time
 __global__ void SlowKernel()
 {
+    printf("threadIdx.x=%d\n", threadIdx.x);
     samplesutil::WasteTime(1'000'000'000ULL);
 }
 
@@ -15,6 +16,7 @@ __device__ int dFoo;
 // A kernel that only sets dFoo
 __global__ void SetFoo(int foo)
 {
+    samplesutil::WasteTime(1'000'000'000ULL);
     dFoo = foo;
 }
 
@@ -22,19 +24,19 @@ __global__ void SetFoo(int foo)
 __global__ void PrintFoo()
 {
     printf("foo: %d\n", dFoo);
+    samplesutil::WasteTime(1'000'000'000ULL);
 }
 
-int main()
+void elapse_via_event()
 {
-    std::cout << "==== Sample 10 - Events ====\n" << std::endl;
     /*
-     Using events to measure time and communicate across streams.
+   Using events to measure time and communicate across streams.
 
-     Expected output: 
-     1) Unrealistically short time with chrono measurements without syncing, 
-     similar times for chrono with syncing and when using CUDA events.
-     2) foo: 42
-    */
+   Expected output:
+   1) Unrealistically short time with chrono measurements without syncing,
+   similar times for chrono with syncing and when using CUDA events.
+   2) foo: 42
+  */
     using namespace std::chrono_literals;
     using namespace std::chrono;
 
@@ -50,8 +52,8 @@ int main()
     // Record start directly before first relevant GPU command
     cudaEventRecord(start);
     // Launch a light-weight GPU kernel and heavy GPU kernel
-    SetFoo<<<1,1>>>(0);
-    SlowKernel<<<1,1>>>();
+    SetFoo<<<1, 1>>>(0);
+    SlowKernel<<<1, 1>>>();
     // Record end directly after last relevant GPU command
     cudaEventRecord(end);
     // Also measure CPU time after last GPU command, without synching
@@ -77,26 +79,29 @@ int main()
 
     /*
     The difference between the two methods, CPU timing and events, is
-    important when writing more complex projects: kernels are being 
+    important when writing more complex projects: kernels are being
     launched asynchronously. The launch returns immediately so the CPU
     can progress with other jobs. This means that to get a proper timing,
     we always have to synchronize CPU and GPU before measuring current time
     with chrono. With CUDA events, we can insert them into streams before
     and after the actions we want to measure. We can have multiple events
-    inserted at many different points. We still have to synchronize, but 
-    only when we eventually want to ACCESS the measurements on the CPU 
+    inserted at many different points. We still have to synchronize, but
+    only when we eventually want to ACCESS the measurements on the CPU
     (e.g., once for all timings at the end of a frame to get a report).
 
-    Make sure that you don't try to measure parts of your program with 
-    events that mix GPU and CPU code. Events for start and end should 
-    only enclose code portions with GPU tasks. Otherwise you won't be 
+    Make sure that you don't try to measure parts of your program with
+    events that mix GPU and CPU code. Events for start and end should
+    only enclose code portions with GPU tasks. Otherwise you won't be
     sure what you are measuring and might get non-reproducible results!
     */
 
-    //Clean up events
+    // Clean up events
     cudaEventDestroy(start);
     cudaEventDestroy(end);
+}
 
+void sync_diff_stream_via_event()
+{
     /*
     Dependencies across streams:
 
@@ -104,8 +109,8 @@ int main()
     across streams. One stream may compute an important
     piece of information that another should use. This
     dependency can be modelled by recording an event in
-    one stream and have the target stream wait on this 
-    event. Commands launched to the stream will not 
+    one stream and have the target stream wait on this
+    event. Commands launched to the stream will not
     continue until the event is observed.
     */
 
@@ -114,11 +119,12 @@ int main()
     cudaEventCreate(&fooReady);
 
     // Create two streams, one producer, one consumer
-    cudaStream_t producer, consumer;
+    cudaStream_t producer, consumer, set_stream;
     cudaStreamCreate(&producer);
     cudaStreamCreate(&consumer);
+    cudaStreamCreate(&set_stream);
 
-    /* 
+    /*
     Enforce the following behavior for producer/consumer streams:
 
         Producer    Consumer
@@ -129,12 +135,17 @@ int main()
            \____________.
                         |
                     print foo
+    Note: It's very strange that even without using events, the synchronization is performed.???
+    基于nsys profiling发现：
+    1： 不同的函数，使用不同的stream，竟然是顺序执行的。
+    2： 相同的函数，使用不同的stream，才是同步执行的，
+    所以不同的函数，使用或者不使用event同步都行。
     */
 
     // Producer stream simulates some hard work
     SlowKernel<<<1, 1, 0, producer>>>();
     // Producer sets foo to an important value
-    SetFoo<<<1, 1, 0, producer>>>(42);
+    SetFoo<<<1, 1, 0, set_stream>>>(42);
     // Producer notifies consumer stream that foo is ready
     cudaEventRecord(fooReady, producer);
 
@@ -143,9 +154,20 @@ int main()
     // Without waiting, consumer MAY print before foo is ready!
     PrintFoo<<<1, 1, 0, consumer>>>();
 
+    cudaStreamDestroy(producer);
+    cudaStreamDestroy(set_stream);
+    cudaStreamDestroy(consumer);
     // Wait for printf outputs
     cudaDeviceSynchronize();
- 
+}
+
+int main()
+{
+    std::cout << "==== Sample 10 - Events ====\n"
+              << std::endl;
+
+    // elapse_via_event();
+    sync_diff_stream_via_event();
     return 0;
 }
 
@@ -153,5 +175,5 @@ int main()
 Exercises:
 1) Write a simple function that calls several different kernels, each of which
 should do a bit of work. Use multiple events and just one cuda...Synchronize,
-and report in % how much each kernel contributes to the total procedure run time. 
+and report in % how much each kernel contributes to the total procedure run time.
 */
