@@ -47,6 +47,15 @@ int main()
 	preventing concurrent execution of kernels.
 	*/
 
+	// ===============================================================
+	// 我的理解：
+	// Pinned memory: cudaMallocHost + cudaMemcpyAsync 并行
+	// 在host端，使用cudaMallocHost分配内存，
+	// 最终使用cudaMemcpyAsync把Device的数据copy到host，是可以并行的
+	// cudaMalloc + cudaMemcpy，串行
+	// cudaMalloc + cudaMemcpyAsync，串行
+	// cudaMallocHost + cudaMemcpy， 串行
+	// cudaMallocHost + cudaMemcpyAsync，并行
 	constexpr unsigned int TASKS = 4;
 
 	// Allocate result values for GPU to write to
