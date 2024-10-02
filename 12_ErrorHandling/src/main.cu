@@ -9,12 +9,16 @@ __device__ int dVal = 42;
 __device__ int dOut;
 
 // Very simple kernel that updates a variable
-__global__ void CopyVal(const int* val)
+__global__ void CopyVal(const int *val, int *outVal)
 {
 	// Simulating a little work
 	samplesutil::WasteTime(1'000'000ULL);
 	// Update a global value
 	dOut = *val;
+	printf("== Device side: CopyVal::val=%p\n", val);
+	printf("== Device side: CopyVal::dOut=%d\n", dOut);
+	*outVal = *val;
+	printf("== Device side: outVal=%d\n", *outVal);
 }
 
 void checkForErrors()
@@ -88,35 +92,74 @@ int main()
 		cudaErrorInvalidPc: invalid program counter
 	*/
 
-	int* validDAddress;
+	int* validDAddress = nullptr;
 	// A function may return an error code - should check those for success
 	cudaError_t err = cudaGetSymbolAddress((void**)&validDAddress, dVal);
+	std::cout << "== cudaGetSymbolAddress return =" << cudaGetErrorName(err) << std::endl;
+	printf("== device ptr of dVal = %p\n", validDAddress);
 
 	if (err != cudaSuccess)
 		// If an error occurred, identify it with cudaGetErrorName and react!
 		std::cout << cudaGetErrorName(err) << std::endl;
 	// Alternatively, you may peek at the last error to see if the program is ok
 	err = cudaPeekAtLastError();
+	if (err != cudaSuccess)
+	{
+		std::cout << cudaGetErrorName(err) << std::endl;
+	}
 	// Getting the last error effectively resets it. Useful after reacting to it
 	err = cudaGetLastError();
-
+	if (err != cudaSuccess)
+	{
+		std::cout << cudaGetErrorName(err) << std::endl;
+	}
 	/* 
 	Launching a kernel with proper configuration and parameters.
 	If the system is set up correctly, this should succeed.
 	*/
-	PRINT_RUN_CHECK((CopyVal<<<1, 1>>>(validDAddress)));
+	int *outVal = nullptr;
+	cudaMalloc((void **)&outVal, sizeof(int));
+
+	PRINT_RUN_CHECK((CopyVal<<<1, 1>>>(validDAddress, outVal)));
+	int hostOut = -1;
+	std::cout << "==***********************************\n";
+	err = cudaMemcpy(&hostOut, outVal, sizeof(int), cudaMemcpyDeviceToHost);
+	std::cout << "== cudaMemcpy outVal->host_dOut return=" << cudaGetErrorName(err) << std::endl;
+	std::cout << "== hostOut=" << hostOut << std::endl;
+
+	hostOut = 0;
+	err = cudaMemcpy(&hostOut, &dOut, sizeof(int), cudaMemcpyDeviceToHost);
+	std::cout << "== cudaMemcpy dOut->hostOut return=" << cudaGetErrorName(err) << std::endl;
+	std::cout << "== hostOut=" << hostOut << std::endl;
+
+	hostOut = 0;
+	int *host_dOut_ptr = nullptr;
+	err = cudaGetSymbolAddress((void **)&host_dOut_ptr, dOut);
+	if (err != cudaSuccess)
+		std::cout << cudaGetErrorName(err) << std::endl;
+	err = cudaMemcpy(&hostOut, host_dOut_ptr, sizeof(int), cudaMemcpyDeviceToHost);
+	std::cout << "== cudaMemcpy dOut->host_dOut_ptr->hostOut return=" << cudaGetErrorName(err) << std::endl;
+	std::cout << "== hostOut=" << hostOut << std::endl;
+	std::cout << "==***********************************\n\n";
+
+	// == hostOut=0, why???, 不知道为什么, device函数CopyVal显示正常。
+	// 猜测：cudaMemcpy的参数只能是host side的地址，或者是cudaMalloc分配到地址。不能直接使用device side的变量地址。
+	// 如果想直接获取device变量的值，需要使用cudaGetSymbolAddress，然后再cudaMemcpy到host side。
 
 	/* 
 	Launching a kernel with bigger block than possible.
 	cudaGetLastError() can catch SOME errors without synchronizing!
 	*/
-	PRINT_RUN_CHECK((CopyVal<<<1, (1<<16)>>>(validDAddress)));
+	// device执行之前就可以获取到错误，然后不会执行，sync后，反而没有错误
+	PRINT_RUN_CHECK((CopyVal<<<1, (1<<16)>>>(validDAddress, outVal)));
 
 	/*
 	Launching a kernel with invalid address - error occurs after launch.
 	cudaGetLastError() alone may miss this without synchronization.
 	*/
-	PRINT_RUN_CHECK((CopyVal<<<1, 1>>>(nullptr)));
+	// device执行前，不知道是否为有效地址，没有错误，
+	// device执行后，才能知道是空地址。
+	PRINT_RUN_CHECK((CopyVal<<<1, 1>>>(nullptr, outVal)));
 
 	// For any kind of error, CUDA also provides a more verbose description.
 	std::cout << cudaGetErrorName(cudaErrorInvalidPc) << ": " << cudaGetErrorString(cudaErrorInvalidPc) << std::endl;

@@ -48,7 +48,7 @@ int main()
 	*/
 
 	// ===============================================================
-	// 我的理解：
+	// 我的理解：(一定要使用nsys profiling，才能更好的理解)
 	// Pinned memory: cudaMallocHost + cudaMemcpyAsync 并行
 	// 在host端，使用cudaMallocHost分配内存，
 	// 最终使用cudaMemcpyAsync把Device的数据copy到host，是可以并行的
