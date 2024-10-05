@@ -5,6 +5,8 @@
 /*
  Producer function.
 
+ atomic VS volatile
+
  Following a threadfence (memory barrier) with a volatile yields a release pattern.
  Following a threadfence (memory barrier) with an atomic yields a release pattern.
  Note however, that neither of these options is ideal. For one, we combine two
@@ -44,6 +46,7 @@ template <bool ATOMIC>
 __device__ void ConsumeFoo(unsigned int id, const float* dFooPtr, int* dFooReadyPtr)
 {
 	if (ATOMIC)
+		// means: =0? (new=old+val, return old, new and old is same address)
 		while (atomicAdd(&dFooReadyPtr[id], 0) == 0);
 	else
 		while (*((volatile int*)&dFooReadyPtr[id]) == 0);
@@ -78,7 +81,7 @@ __global__ void ProducerConsumerShared()
 {
 	extern __shared__ float sFoo[];
 
-	if (threadIdx.x < blockDim.x/2)
+	if (threadIdx.x < blockDim.x / 2)
 	{
 		float pi = samplesutil::GregoryLeibniz(10'000'000);
 		sFoo[threadIdx.x] = pi;
@@ -90,6 +93,15 @@ __global__ void ProducerConsumerShared()
 		int cId = threadIdx.x - blockDim.x / 2;
 		printf("Comsumer %d thinks Pi is %f\n", cId, sFoo[cId]);
 	}
+}
+
+// 使用__syncthreads去完成生产者和消费者的同步。
+void scenario_1()
+{
+	// Run producer / consumer scenario inside a single block (simple)
+	std::cout << "\nProducer / consumer pair in same block" << std::endl;
+	ProducerConsumerShared<<<1, 34, 34 * sizeof(float)>>>();
+	cudaDeviceSynchronize();
 }
 
 int main()
@@ -151,11 +163,11 @@ int main()
 	// Compute how many producer / consumer blocks should be launched
 	unsigned int numBlocks = N / blockSize;
 
-	// Run producer / consumer scenario inside a single block (simple)
-	std::cout << "\nProducer / consumer pair in same block" << std::endl;
-	ProducerConsumerShared<<<1, 34, 34 * sizeof(float)>>>();
-	cudaDeviceSynchronize();
+	// 使用__syncthreads去完成生产者和消费者的同步。
+	// scenario_1();
 
+	// 下面是使用__threadfence同步生产者和消费者。
+	// atomicExch and volatile效果是一样的。
 	// Allocate and initialize mmeory for global producer / consumer scenario
 	float* dFooPtr;
 	int* dFooReadyPtr;
