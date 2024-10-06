@@ -11,16 +11,55 @@ __global__ void PrintFoo()
 }
 
 // Print a managed array of integers
-__global__ void PrintBar(const int* mBarPtr, unsigned int numEntries)
+__global__ void PrintBar(const int *mBarPtr, unsigned int numEntries)
 {
 	printf("mBar GPU: ");
 	for (int i = 0; i < numEntries; i++)
 		printf("%d%s", mBarPtr[i], (i == numEntries - 1) ? "\n" : ", ");
 }
 
+#define CHECK_RET(RET)                                  \
+	if (cudaSuccess != RET)                             \
+	{                                                   \
+		printf("%s:%d Failed", __FUNCTION__, __LINE__); \
+		exit(0);                                        \
+	}
+
+__managed__ int *pval;
+__global__ void CalcSquare(int N)
+{
+	auto id = threadIdx.x + blockIdx.x * blockDim.x;
+	auto num = N / 128 + 1;
+	for (int i = 0; i < num; i++)
+	{
+		auto real_id = i * 128 + id;
+		if (real_id < N)
+			pval[real_id] = real_id * real_id;
+	}
+}
+
+int test_calc_square()
+{
+	auto ret = cudaMallocManaged(&pval, 1000 * sizeof(int));
+	CHECK_RET(ret);
+
+	CalcSquare<<<1, 128>>>(1000);
+	cudaDeviceSynchronize();
+
+	printf("== CPU side result:\n");
+	for (int i = 0; i < 1000; i++)
+	{
+		printf("%d's sqare = %d, %s\n", i, pval[i], pval[i] == i * i ? "is expected" : " is not expected. ********************");
+	}
+	return 0;
+}
+
 int main()
 {
-	std::cout << "==== Sample 13 - Managed Memory ====\n" << std::endl;
+	return test_calc_square();
+
+	std::cout << "==== Sample 13 - Managed Memory ====\n"
+			  << std::endl;
 	/*
 	Managed memory reduces code complexity by decoupling physical
 	memory location from address range. The CUDA runtime will take
@@ -28,8 +67,8 @@ int main()
 	No copies are required, but care must be taken for concurrent
 	access. To avoid performance degradation, managed memory should
 	be prefetched.
-	
-	Expected output: 
+
+	Expected output:
 		mFoo GPU: 14
 		mBar GPU: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
 		mBar CPU: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
@@ -42,14 +81,16 @@ int main()
 
 	// We may assign values to managed variables on the CPU
 	mFoo = VALUE;
+
+	// device可以直接使用，__managed__
 	// Managed variables can be used without explicit transfer
-	PrintFoo<<<1,1>>>();
+	PrintFoo<<<1, 1>>>();
 	// Wait for printf output
 	cudaDeviceSynchronize();
 
 	// We may also allocate managed memory on demand
-	int* mBarPtr;
-	cudaMallocManaged((void**)&mBarPtr, VALUE * sizeof(int));
+	int *mBarPtr;
+	cudaMallocManaged((void **)&mBarPtr, VALUE * sizeof(int));
 	// Managed memory can be directly initialized on the CPU
 	for (int i = 0; i < VALUE; i++)
 		mBarPtr[i] = i;
@@ -59,7 +100,7 @@ int main()
 	and performance is essential, we can prefetch it to the
 	required location. This basically replaces memcpy. Note
 	however, that this action  requires support for the
-	concurrentAccess property. Support for concurrent access 
+	concurrentAccess property. Support for concurrent access
 	is queried via device properties.
 	*/
 
@@ -72,10 +113,10 @@ int main()
 	std::cout << "\nCUDA device does " << (!prop.concurrentManagedAccess ? "NOT " : "") << "support concurrent access\n";
 
 	// If we can, we prefetch ahead of time
-	if(prop.concurrentManagedAccess)
+	if (prop.concurrentManagedAccess)
 		cudaMemPrefetchAsync(mBarPtr, VALUE * sizeof(int), device);
 	// Launch kernel with managed memory pointer as parameter
-	PrintBar<<<1,1>>>(mBarPtr, VALUE);
+	PrintBar<<<1, 1>>>(mBarPtr, VALUE);
 	// We may also prefetch it back to the CPU
 	if (prop.concurrentManagedAccess)
 		cudaMemPrefetchAsync(mBarPtr, VALUE * sizeof(int), cudaCpuDeviceId);
@@ -101,8 +142,8 @@ int main()
 
 	if (!prop.concurrentManagedAccess)
 		// CPU access to managed memory and GPU execution may not overlap
-		cudaDeviceSynchronize(); 
-	
+		cudaDeviceSynchronize();
+
 	// Modify on CPU after / during GPU execution
 	mBarPtr[0] = 20;
 
@@ -114,7 +155,7 @@ int main()
 
 /*
 Exercises:
-1) Write a program computes the squares of the integers from 1 to 1000 and 
+1) Write a program computes the squares of the integers from 1 to 1000 and
 stores them to managed memory. Print them on the CPU.
 2) Choose one of the programs you used previously that did quite a bit of copying,
 and rewrite it here to use managed memory instead. How does the performance compare?
