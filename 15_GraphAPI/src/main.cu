@@ -8,7 +8,7 @@
 __global__ void busy()
 {
 	samplesutil::WasteTime(1'000'000'000ULL);
-	printf("I'm awake!\n");
+	printf("I'm awake!, blockIdx.x=%d, blockDim.x=%d, threadIdx.x=%d, id=%d\n", blockIdx.x, blockDim.x, threadIdx.x, blockIdx.x * blockDim.x + threadIdx.x);
 }
 
 void runTasksSequentially(unsigned int numTasks)
@@ -118,31 +118,35 @@ int main()
 	sequentially, the last three groups running concurrently. 
 	*/
 
+	// 可以把function打包到graph中执行，
+	// 可以把一个function，多次执行时，分别作为kernel node，放到Graph中，会自动并行执行。
+	// Graph中只能使用event进行同步。
+
 	constexpr int TASKS = 4;
 
-	std::cout << "Launching multiple tasks sequentially" << std::endl;
+	std::cout << "== Launching multiple tasks sequentially" << std::endl;
 	// Launching multiple tasks as kernels one after the other
 	runTasksSequentially(TASKS);
 	cudaDeviceSynchronize();
 
-	std::cout << "Running recorded graph from existing sequential code" << std::endl;
+	std::cout << "== Running recorded graph from existing sequential code" << std::endl;
 	// Recording a graph from the existing sequential code and launching its instance
 	cudaGraphExec_t recordedSequential = recordGraphFromFunction(runTasksSequentially, TASKS);
 	cudaGraphLaunch(recordedSequential, 0);
 	cudaDeviceSynchronize();
 
-	std::cout << "Launching multiple tasks with streams" << std::endl;
+	std::cout << "== Launching multiple tasks with streams" << std::endl;
 	// Launching multiple tasks in multiple streams
 	runTasksWithStreams(TASKS);
 	cudaDeviceSynchronize();
 
-	std::cout << "Running recorded graph from existing stream-based code" << std::endl;
+	std::cout << "== Running recorded graph from existing stream-based code" << std::endl;
 	// Recording a graph from the existing stream-based code, launching instance
 	cudaGraphExec_t recordedStreams = recordGraphFromFunction(runTasksWithStreams, TASKS);
 	cudaGraphLaunch(recordedStreams, 0);
 	cudaDeviceSynchronize();
 
-	std::cout << "Running manually-built graph that behaves like streams" << std::endl;
+	std::cout << "== Running manually-built graph that behaves like streams" << std::endl;
 	// Example for building a scratch manually without recording
 	cudaGraphExec_t instanceBuilt = buildGraphForParallelTasks(TASKS);
 	cudaGraphLaunch(instanceBuilt, 0);
