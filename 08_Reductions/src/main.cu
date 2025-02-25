@@ -40,6 +40,7 @@ __global__ void reduceAtomicGlobal(const float* __restrict input, int N)
  block-wide visible memory. This relieves the contention on 
  a single global variable that all threads want access to.
 */
+// OpenCL similar example: https://github.com/crr0004/adventures-in-opencl/tree/master/summing_numbers
 __global__ void reduceAtomicShared(const float* __restrict input, int N)
 {
     const int id = threadIdx.x + blockIdx.x * blockDim.x;
